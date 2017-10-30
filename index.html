@@ -222,14 +222,13 @@
         // Bind our tree data to the circles, using the 'id' field as our key
         let updatedTrees = trees.data(treeData, d => d.id);
 
-        let enterSelection = updatedTrees.enter();
-        let newTrees = enterSelection.append('circle')
-            // TODO: remove functions if not ultimately referencing d
+        updatedTrees.enter()
+            .append('circle')
             .attr('class', 'tree')
             .attr('r', 2.5)
             .attr('cx', function (d) { return d.x; })
             .attr('cy', function (d) { return d.y; })
-            .style('fill', function (d) { return '#9de0a3'; })
+            .style('fill', '#9de0a3')
             .style('stroke', '#17471b')
             .style('stroke-opacity', 1.0)
             .style('stroke-width', 0.3);
@@ -244,7 +243,6 @@
         d3.select('#dbh-filter-text').text(currentDBHMinimum + ' minimum inches');
     }
 
-    // TODO: figure out a better way to do this init
     poiData = d3.range(currentNumPOIs).map(function () { return {}; });
 
     function setUpPOIs(treeData) {

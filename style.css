@@ -1,0 +1,29 @@
+body {
+    background-color: #878787 !important;
+    margin: 0;
+    font-family: 'Roboto', sans-serif;
+}
+
+#filtering-bar {
+    position: fixed;
+    right: 0px;
+    background-color: #a8a8a8;
+    padding: 15px;
+    margin: 15px;
+}
+
+span {
+    color: #ffffff;
+    
+}
+
+.refresh {
+    color: #000;
+    
+}
+
+#tree-count {
+    font-weight: bold;
+    font-size: 30px;
+    color: #fff;
+}

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel='stylesheet' type='text/css' href='style.css'>
+    <link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src='https://d3js.org/d3.v4.min.js'></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+</head>
+
+<body>
+    <div id='filtering-bar'>
+        <text id='tree-count'></text>
+        <br>
+        <br>
+        <div id='filter-control'>
+            <select id='genus-filter' class='form-control'></select>
+            <br>
+            <input id="dbh-filter" type="range">
+            <text id='dbh-filter-text'></text>
+        </div>
+        <br>
+        <div id='a-control'>
+            <span>Point of Interest A</span>
+            <input id='a-checkbox' class='poi-active' type='checkbox'>
+            <input type="range" id="poi-radius-0">
+            <text id='poi-radius-text-0'></text>
+        </div>
+        <br>
+        <div id='b-control'>
+            <span>Point of Interest B</span>
+            <input id='b-checkbox' class='poi-active' type='checkbox'>
+            <input type="range" id="poi-radius-1">
+            <text id='poi-radius-text-1'></text>
+        </div>
+    </div>
+</body>
+
+</html>
+
+
+<script>
+    // Set up size
+    let mapWidth = 750;
+    let mapHeight = 750;
+
+    let currentNumPOIs = 2;
+
+    let poiRadius = 65;
+    let poiRadiusInnerOffset = 10;
+    let minimumPOIRadius = poiRadiusInnerOffset + 15;
+    let maximumPOIRadius = 750;
+
+    let defaultGenusValue = 'All genera';
+    let currentGenusValue = defaultGenusValue;
+
+    let minimumDBH = 0;
+    let maximumDBH = 150;
+    let currentDBHMinimum = minimumDBH;
+
+    // calculate everything in x,y then convert back to lon lat
+
+    var projection = d3.geoMercator()
+        .center([-122.433701, 37.767683]) // San Francisco, roughly
+        .scale(225000)
+        .translate([mapWidth / 2, mapHeight / 2]);
+
+    let svg = d3.select('body').append('svg')
+        .attr('width', window.innerWidth)
+        .attr('height', window.innerHeight);
+
+    // Add SVG map at correct size, assuming map is saved in a subdirectory called `data`
+    svg.append('image')
+        .attr('width', mapWidth)
+        .attr('height', mapHeight)
+        .attr('xlink:href', 'data/sf-map.svg');
+
+    let treesGroup = svg.append('g')
+        .attr('id', 'trees-group');
+
+    let speciesSet = new Set();
+
+    function setSpecies(d) {
+        let isValid = d.qSpecies != null && d.qSpecies.length > 0 && d.qSpecies != '::' && d.qSpecies != 'Tree(s) ::';
+        if (isValid) {
+            let scientificName = d.qSpecies.split(' ', 1)[0];
+            if (!speciesSet.has(scientificName)) speciesSet.add(scientificName);
+            return d.qSpecies;
+        } else {
+            return '';
+        }
+    }
+
+    // Fetch the data, transfrom it, load it
+    d3.csv('data/trees.csv', parseInputRow, loadData);
+
+    function parseInputRow(d) {
+        return {
+            id: +d.TreeID,
+            species: setSpecies(d),
+            address: (d.qAddress != null && d.qAddress.length > 0) ? d.qAddress : null,
+            siteInfo: (d.qSiteInfo != null && d.qSiteInfo.length > 0 && d.qSiteInfo != ':') ? d.qSiteInfo : null,
+            dbh: (d.DBH != null && d.DBH != 0) ? +d.DBH : null,
+            treesGroupSize: (d.PlotSize != null && d.PlotSize.length > 0) ? d.PlotSize : null,
+            latitude: +d.Latitude,
+            longitude: +d.Longitude,
+            x: +projection([+d.Longitude, +d.Latitude])[0],
+            y: +projection([+d.Longitude, +d.Latitude])[1]
+        };
+    }
+    function loadData(error, data) {
+        if (error) throw error;
+        treeData = data;
+
+        setUpInputBar(treeData);
+        setUpPOIs(treeData, currentNumPOIs);
+        updatePOIRadius(0, 40);
+        updatePOIRadius(1, 40);
+        drawData(treeData);
+    }
+
+    function setUpInputBar(treeData) {
+
+        // A checkbox
+        let checkboxA = d3.selectAll('#a-checkbox');
+        checkboxA.on('change', function () {
+            updatePOIActive(0, this.checked);
+        });
+
+        // B checkbox
+        let checkboxB = d3.selectAll('#b-checkbox');
+        checkboxB.on('change', function () {
+            updatePOIActive(1, this.checked);
+        });
+
+        // Genus filter
+        let genusSelect = d3.select('#genus-filter');
+        genusSelect.append('option')
+            .text(currentGenusValue);
+        genusSelect.selectAll('option')
+            .data(Array.from(speciesSet)).enter()
+            .append('option')
+            .text(function (d) { return d; });
+        genusSelect.on('change', function () {
+            currentGenusValue = this.options[this.selectedIndex].value;
+            updateDataFilter(treeData);
+        });
+
+        // DBH filter
+        let dbhSelect = d3.select('#dbh-filter')
+            .attr('min', minimumDBH)
+            .attr('max', maximumDBH);
+        document.getElementById('dbh-filter').value = currentDBHMinimum;
+        dbhSelect.on('input', function () {
+            currentDBHMinimum = +this.value;
+            updateDataFilter(treeData);
+        });
+
+        let rangeA = d3.select('#poi-radius-0')
+            .attr('min', minimumPOIRadius)
+            .attr('max', maximumPOIRadius)
+            .on('input', function () {
+                updatePOIRadius(0, +this.value);
+            });
+
+        let rangeB = d3.select('#poi-radius-1')
+            .attr('min', minimumPOIRadius)
+            .attr('max', maximumPOIRadius)
+            .on('input', function () {
+                updatePOIRadius(1, +this.value);
+            });
+
+    }
+
+    function updatePOIActive(i, isActive) {
+        let poiCircle = d3.select('#poi-outer-' + i);
+        if (isActive) poiCircle.attr('stroke-dasharray', 'none');
+        else poiCircle.attr('stroke-dasharray', '5, 10');
+        poiData[i].active = isActive;
+        updateDataFilter(treeData);
+    }
+
+    function updatePOIRadius(i, radius) {
+
+        document.getElementById('poi-radius-' + i).value = radius;
+        let currentRadius = d3.select('#poi-outer-' + i).attr('r');
+        d3.select('#poi-outer-' + i)
+            .attr('r', currentRadius = radius);
+        d3.select('#poi-inner-' + i)
+            .attr('r', currentRadius - poiRadiusInnerOffset);
+        d3.select('#poi-border-' + i)
+            .attr('r', currentRadius - poiRadiusInnerOffset / 2);
+        poiData[i].radius = currentRadius;
+
+        updateDataFilter(treeData);
+
+        var arbitraryPoint1 = [poiData[i].x, poiData[i].y]; // location in x,y pixels on map
+        var arbitraryPoint2 = [poiData[i].x + poiData[i].radius, poiData[i].y]; // this is 100 pixels away
+
+        var lonLat1 = projection.invert(arbitraryPoint1);
+        var lonLat2 = projection.invert(arbitraryPoint2);
+
+        var radianDistance = d3.geoDistance(lonLat1, lonLat2); // e.g. 0.0003511662069411614
+        var fractionOfTheWayAroundTheEarth = radianDistance / (2 * Math.PI);
+
+        // https://www.wolframalpha.com/input/?i=circumference+of+earth+in+miles
+        var earthCircumference = 24901; // in miles
+
+        var milesDistance = fractionOfTheWayAroundTheEarth * 24901; // e.g. 1.3917128481074619
+
+        d3.select('#poi-radius-text-' + i).text(milesDistance.toFixed(1) + ' miles');
+
+    }
+
+    function drawData(treeData) {
+
+        // Create a selection of circles in our treesGroup (empty on the first go)
+        let trees = treesGroup.selectAll('circle.tree');
+
+        // Bind our tree data to the circles, using the 'id' field as our key
+        let updatedTrees = trees.data(treeData, d => d.id);
+
+        let enterSelection = updatedTrees.enter();
+        let newTrees = enterSelection.append('circle')
+            // TODO: remove functions if not ultimately referencing d
+            .attr('class', 'tree')
+            .attr('r', 2.5)
+            .attr('cx', function (d) { return d.x; })
+            .attr('cy', function (d) { return d.y; })
+            .style('fill', function (d) { return '#9de0a3'; })
+            .style('stroke', '#17471b')
+            .style('stroke-opacity', 1.0)
+            .style('stroke-width', 0.3);
+
+        // Now we'll select all the circles that no longer
+        // have any corresponding data after the data join
+        let unselectedTrees = updatedTrees.exit();
+        // And we'll remove those nodes form the DOM - poof!
+        updatedTrees.exit().remove();
+
+        d3.select('#tree-count').text(treeData.length + ' trees');
+        d3.select('#dbh-filter-text').text(currentDBHMinimum + ' minimum inches');
+    }
+
+    // TODO: figure out a better way to do this init
+    poiData = d3.range(currentNumPOIs).map(function () { return {}; });
+
+    function setUpPOIs(treeData) {
+
+        let initialX = 100;
+        let nextOffset = 100;
+        poiData.forEach(function (d, i) {
+            d.i = i;
+            d.radius = poiRadius;
+            d.x = initialX;
+            d.y = 100;
+            initialX += nextOffset;
+            active = false;
+        });
+        poiData[0].text = 'A';
+        poiData[1].text = 'B';
+
+        let pois = svg.selectAll('g.poi-group')
+            .data(poiData);
+
+        let poiGroup = pois.enter()
+            .append('g')
+            .attr('class', 'poi-group');
+
+        pois.exit().remove();
+
+        poiGroup.append('circle')
+            .style('fill', '#000000')
+            .style('fill-opacity', 0.6)
+            .attr('id', function (d) { return 'poi-center-' + d.i; })
+            .attr('r', 2.5)
+            .attr('cx', function (d) { return d.x; })
+            .attr('cy', function (d) { return d.y; });
+
+        let outer = poiGroup.append('circle')
+            .style('fill', '#ffffff')
+            .style('fill-opacity', 0.0)
+            .style('stroke', '#000')
+            .attr('stroke-dasharray', '5, 10')
+            .style('stroke-opacity', 0.4)
+            .style('stroke-width', 2.0)
+            .attr('id', function (d) { return 'poi-outer-' + d.i; })
+            .attr('cx', function (d) { return d.x; })
+            .attr('cy', function (d) { return d.y; })
+            .call(d3.drag().on('drag', onPOIResize));
+
+        poiGroup.append('circle')
+            .style('fill', '#ffffff')
+            .style('fill-opacity', 0.0)
+            .attr('id', function (d) { return 'poi-inner-' + d.i; })
+            .attr('cx', function (d) { return d.x; })
+            .attr('cy', function (d) { return d.y; })
+            .call(d3.drag().on('drag', onPOIDrag))
+            .on('mouseover', function (d) {
+                poiGroup.select('#poi-label-' + d.i).style('visibility', 'visible');
+            })
+            .on('mouseout', function (d) {
+                poiGroup.select('#poi-label-' + d.i).style('visibility', 'hidden');
+            });
+
+        poiGroup.append('circle')
+            .style('pointer-events', 'none')
+            .style('fill', 'none')
+            .style('stroke-opacity', 0.15)
+            .style('stroke-width', poiRadiusInnerOffset)
+            .style('stroke', '#000')
+            .attr('id', function (d) { return 'poi-border-' + d.i; })
+            .attr('cx', function (d) { return d.x; })
+            .attr('cy', function (d) { return d.y; })
+
+        poiGroup.append('text')
+            .style('pointer-events', 'none')
+            .attr('visibility', 'hidden')
+            .attr('id', function (d) { return 'poi-label-' + d.i; })
+            .attr('font-size', 30)
+            .style('color', '#000')
+            .style('opacity', '0.6')
+            .style('font-weight', 'bold')
+            .style('font-family', '"Roboto", sans-serif')
+            .text(function (d) { return d.text; })
+            .attr('transform', function (d) { return "translate(" + d.x + "," + (d.y - poiRadiusInnerOffset * 2) + ")"; })
+            .attr('text-anchor', 'middle');
+
+        function onPOIResize(d) {
+            let asq = (this.attributes.cx.value - d3.event.x) ** 2;
+            let bsq = (this.attributes.cy.value - d3.event.y) ** 2;
+            let sqrt = (asq + bsq) ** 0.5;
+            let radius = Math.min(Math.max(sqrt, minimumPOIRadius), maximumPOIRadius);
+            updatePOIRadius(d.i, radius);
+        }
+
+        function onPOIDrag(d, i) {
+
+            poiGroup.select('#poi-outer-' + d.i)
+                .attr('cx', d.x = d3.event.x)
+                .attr('cy', d.y = d3.event.y);
+
+            poiGroup.select('#poi-inner-' + d.i)
+                .attr('cx', d.x = d3.event.x)
+                .attr('cy', d.y = d3.event.y);
+
+            poiGroup.select('#poi-center-' + d.i)
+                .attr('cx', d.x = d3.event.x)
+                .attr('cy', d.y = d3.event.y);
+
+            poiGroup.select('#poi-border-' + d.i)
+                .attr('cx', d.x = d3.event.x)
+                .attr('cy', d.y = d3.event.y);
+
+            poiGroup.select('#poi-label-' + d.i)
+                .attr('transform', function (d) { return "translate(" + d.x + "," + (d.y - poiRadiusInnerOffset * 2) + ")"; });
+
+            updateDataFilter(treeData);
+        }
+
+    }
+
+    function updateDataFilter(treeData) {
+        let filteredData = treeData;
+        if (currentGenusValue !== defaultGenusValue) filteredData = treeData.filter(d => d.species.includes(currentGenusValue));
+        filteredData = filteredData.filter(d => d.dbh >= currentDBHMinimum);
+        poiData.forEach(function (d) {
+            if (d.active) {
+                filteredData = filteredData.filter(function (tree) {
+                    return (tree.x - d.x) ** 2 + (tree.y - d.y) ** 2 < d.radius ** 2;
+                });
+            }
+        });
+        drawData(filteredData);
+    }
+
+</script>

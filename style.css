@@ -10,6 +10,7 @@ body {
     background-color: #a8a8a8;
     padding: 15px;
     margin: 15px;
+    max-width: 350px;
 }
 
 span {

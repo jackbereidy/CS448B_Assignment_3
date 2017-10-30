@@ -14,6 +14,8 @@
     <div id='filtering-bar'>
         <text id='tree-count'></text>
         <br>
+        <span>This visualization maps a subset of trees catalogued in a San Francisco tree dataset. Filters on the data can be applied from the control panel as well as interactive points of interest circles.</span>
+        <br>
         <br>
         <div id='filter-control'>
             <span>Genus</span>
@@ -50,9 +52,8 @@
 
     let currentNumPOIs = 2;
 
-    let poiRadius = 65;
     let poiRadiusInnerOffset = 10;
-    let minimumPOIRadius = poiRadiusInnerOffset + 15;
+    let minimumPOIRadius = poiRadiusInnerOffset + 35;
     let maximumPOIRadius = 750;
 
     let defaultGenusValue = 'All genera';
@@ -118,8 +119,8 @@
 
         setUpInputBar(treeData);
         setUpPOIs(treeData, currentNumPOIs);
-        updatePOIRadius(0, 40);
-        updatePOIRadius(1, 40);
+        updatePOIRadius(0, minimumPOIRadius);
+        updatePOIRadius(1, minimumPOIRadius);
         drawData(treeData);
     }
 
@@ -142,7 +143,7 @@
         genusSelect.append('option')
             .text(currentGenusValue);
         genusSelect.selectAll('option')
-            .data(Array.from(speciesSet)).enter()
+            .data(Array.from(speciesSet).sort()).enter()
             .append('option')
             .text(function (d) { return d; });
         genusSelect.on('change', function () {
@@ -212,7 +213,7 @@
 
         var milesDistance = fractionOfTheWayAroundTheEarth * 24901; // e.g. 1.3917128481074619
 
-        d3.select('#poi-radius-text-' + i).text(milesDistance.toFixed(1) + ' miles');
+        d3.select('#poi-radius-text-' + i).text(milesDistance.toFixed(1) + ' mile radius');
 
     }
 
@@ -241,7 +242,7 @@
         // And we'll remove those nodes form the DOM - poof!
         updatedTrees.exit().remove();
 
-        d3.select('#tree-count').text(treeData.length + ' trees');
+        d3.select('#tree-count').text(treeData.length + ' trees displayed');
         d3.select('#dbh-filter-text').text(currentDBHMinimum + ' minimum inches');
     }
 
@@ -253,7 +254,7 @@
         let nextOffset = 100;
         poiData.forEach(function (d, i) {
             d.i = i;
-            d.radius = poiRadius;
+            d.radius = minimumPOIRadius;
             d.x = initialX;
             d.y = 100;
             initialX += nextOffset;
